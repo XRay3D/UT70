@@ -100,66 +100,72 @@ byt4  binary maped:
 
 class UT70X : public QSerialPort {
     Q_OBJECT
+
+    QByteArray data;
+
 public:
     UT70X(QObject* parent = nullptr);
 
     enum Mode : uint8_t {
-        V_AC = 0xF8, //  F8 1111 1000  V~
-        V_DC = 0xF0, //  F0 1111 0000  V=
-        mV = 0xE8, //    E8 1110 1000  mV
-        R_C = 0xE0, //   E0 1110 0000  R/C
-        F = 0xE1, //     E1 1110 0001  F
-        Dio = 0xD8, //   D8 1101 1000  Dio
-        A_DC = 0xA8, //  A8 1010 1000  A=
-        A_AC = 0xA9, //  A9 1010 1001  A~
-        mA_DC = 0xB0, // B0 1011 0000  mA=
-        mA_AC = 0xB1, // B1 1011 0001  mA~
-        FAIL_range,
-        Hz_range,
-        PR_range,
+        A_DC = 0xA8, //     A8	1010	1000	A=
+        A_AC = 0xA9, //     A9	1010	1001	A~
+        mA_DC = 0xB0, //	B0	1011	0000    mA=
+        mA_AC = 0xB1, //	B1	1011	0001    mA~
+        Dio = 0xD8, //      D8	1101	1000	Dio
+        R_C = 0xE0, //      E0	1110	0000    R/C
+        F = 0xE1, //        E1	1110	0001    F
+        mV = 0xE8, //       E8	1110	1000	mV
+        V_DC = 0xF0, //     F0	1111	0000    V=
+        V_AC = 0xF8, //     F8	1111	1000	V~
+        FAIL_range_,
+        Hz_range_,
+        PR_range_,
     };
     Q_ENUM(Mode)
+    Mode mode() { return static_cast<Mode>(reinterpret_cast<uint8_t*>(data.data())[1]); };
+    int range(Mode mode)
+    {
+        struct Range {
+            uint8_t data[8];
+            uint8_t operator[](int i) const { return data[i]; }
+        };
+        static const std::map<Mode, Range> parMap {
+            { V_AC, { 3, 1, 2, 3, 4, 0, 0, 0 } },
+            { V_DC, { 1, 2, 3, 4, 0, 0, 0, 0 } },
+            { mV, { 2, 3, 0, 0, 0, 0, 0, 0 } },
+            { R_C, { 3, 1, 2, 3, 1, 2, 2, 0 } }, //last active range is nS on 5 digit display (800nS)
+            { F, { 1, 2, 3, 1, 2, 3, 0, 0 } },
+            { Dio, { 1, 0, 0, 0, 0, 0, 0, 0 } },
+            { A_DC, { 1, 2, 0, 0, 0, 0, 0, 0 } },
+            { A_AC, { 1, 2, 0, 0, 0, 0, 0, 0 } },
+            { mA_DC, { 2, 3, 0, 0, 0, 0, 0, 0 } },
+            { mA_AC, { 2, 3, 0, 0, 0, 0, 0, 0 } },
+            { FAIL_range_, { 0, 0, 0, 0, 0, 0, 0, 0 } },
+            { Hz_range_, { 2, 3, 1, 2, 3, 1, 2, 3 } },
+            { PR_range_, { 0, 2, 0, 0, 0, 0, 0, 0 } },
+        };
+        return parMap.at(mode)[(data[2] >> 3) & 0x7];
+    }
 
-    struct Range {
-        uint8_t data[8];
-        uint8_t& operator[](int i) { return data[i]; }
-        uint8_t operator[](int i) const { return data[i]; }
-    };
-    static inline const std::map<Mode, Range> parMap {
-        { V_AC, { 3, 1, 2, 3, 4, 0, 0, 0 } },
-        { V_DC, { 1, 2, 3, 4, 0, 0, 0, 0 } },
-        { mV, { 2, 3, 0, 0, 0, 0, 0, 0 } },
-        { R_C, { 3, 1, 2, 3, 1, 2, 2, 0 } }, //last active range is nS on 5 digit display (800nS)
-        { F, { 1, 2, 3, 1, 2, 3, 0, 0 } },
-        { Dio, { 1, 0, 0, 0, 0, 0, 0, 0 } },
-        { A_DC, { 1, 2, 0, 0, 0, 0, 0, 0 } },
-        { A_AC, { 1, 2, 0, 0, 0, 0, 0, 0 } },
-        { mA_DC, { 2, 3, 0, 0, 0, 0, 0, 0 } },
-        { mA_AC, { 2, 3, 0, 0, 0, 0, 0, 0 } },
-        { FAIL_range, { 0, 0, 0, 0, 0, 0, 0, 0 } },
-        { Hz_range, { 2, 3, 1, 2, 3, 1, 2, 3 } },
-        { PR_range, { 0, 2, 0, 0, 0, 0, 0, 0 } },
-    };
+    static constexpr int F8_range[] = { 3, 1, 2, 3, 4, 0, 0, 0 };
+    static constexpr int F0_range[] = { 1, 2, 3, 4, 0, 0, 0, 0 };
+    static constexpr int E8_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
+    static constexpr int E0_range[] = { 3, 1, 2, 3, 1, 2, 2, 0 }; //last active range is nS on 5 digit display (800nS)
+    static constexpr int E1_range[] = { 1, 2, 3, 1, 2, 3, 0, 0 };
+    static constexpr int D8_range[] = { 1, 0, 0, 0, 0, 0, 0, 0 };
+    static constexpr int A8_range[] = { 1, 2, 0, 0, 0, 0, 0, 0 };
+    static constexpr int A9_range[] = { 1, 2, 0, 0, 0, 0, 0, 0 };
+    static constexpr int B0_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
+    static constexpr int B1_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
+    static constexpr int FAIL_range[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    static constexpr int Hz_range[] = { 2, 3, 1, 2, 3, 1, 2, 3 };
+    static constexpr int PR_range[] = { 0, 2, 0, 0, 0, 0, 0, 0 };
 
-    // static constexpr int F8_range[] = { 3, 1, 2, 3, 4, 0, 0, 0 };
-    // static constexpr int F0_range[] = { 1, 2, 3, 4, 0, 0, 0, 0 };
-    // static constexpr int E8_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int E0_range[] = { 3, 1, 2, 3, 1, 2, 2, 0 }; //last active range is nS on 5 digit display (800nS)
-    // static constexpr int E1_range[] = { 1, 2, 3, 1, 2, 3, 0, 0 };
-    // static constexpr int D8_range[] = { 1, 0, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int A8_range[] = { 1, 2, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int A9_range[] = { 1, 2, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int B0_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int B1_range[] = { 2, 3, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int FAIL_range[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-    // static constexpr int Hz_range[] = { 2, 3, 1, 2, 3, 1, 2, 3 };
-    // static constexpr int PR_range[] = { 0, 2, 0, 0, 0, 0, 0, 0 };
-
-    int* base_range; // value * 10^base_range
+    const int* base_range; // value * 10^base_range
     int sub_range; //
 
     int checksum(unsigned char* d, int len);
-    int dumpdata(unsigned char* d, int len, FILE* fd);
+    int dumpdata(unsigned char* d, int len);
     int eeprom();
     bool initserial(const QString& n);
     int mmm();

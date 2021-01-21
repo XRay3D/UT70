@@ -36,5 +36,12 @@ void MainWindow::on_pushButton_clicked(bool checked)
 
 void MainWindow::on_pushButton_2_clicked(bool checked)
 {
-    ut.mmm();
+    timerId ? (killTimer(timerId), timerId = 0)
+            : timerId = startTimer(1000);
+}
+
+void MainWindow::timerEvent(QTimerEvent* event)
+{
+    if (event->timerId() == timerId)
+        ut.mmm();
 }

@@ -31,5 +31,10 @@ private slots:
 private:
     Ui::MainWindow* ui;
     UT70X ut;
+    int timerId = 0;
+
+    // QObject interface
+protected:
+    void timerEvent(QTimerEvent* event) override;
 };
 #endif // MAINWINDOW_H
