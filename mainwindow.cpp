@@ -8,9 +8,17 @@ MainWindow::MainWindow(QWidget* parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    auto pil { QSerialPortInfo::availablePorts() };
 
-    for (auto&& portInfo : QSerialPortInfo::availablePorts())
+    std::sort(pil.begin(), pil.end(), [](auto&& pi1, auto&& pi2) {
+        return pi1.portName().mid(3).toInt() < pi2.portName().mid(3).toInt();
+    });
+
+    for (auto&& portInfo : pil)
         ui->comboBox->addItem(portInfo.portName());
+
+    connect(&ut, &UT70X::valueChanged, ui->doubleSpinBox, &QDoubleSpinBox::setValue);
+    connect(&ut, &UT70X::unit, ui->doubleSpinBox, &QDoubleSpinBox::setSuffix);
 
     QSettings settings;
     settings.beginGroup("MainWindow");
@@ -29,19 +37,7 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::on_pushButton_clicked(bool checked)
+void MainWindow::on_pushButton_clicked(bool /*checked*/)
 {
     ut.initserial(ui->comboBox->currentText());
-}
-
-void MainWindow::on_pushButton_2_clicked(bool checked)
-{
-    timerId ? (killTimer(timerId), timerId = 0)
-            : timerId = startTimer(1000);
-}
-
-void MainWindow::timerEvent(QTimerEvent* event)
-{
-    if (event->timerId() == timerId)
-        ut.mmm();
 }

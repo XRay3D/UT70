@@ -26,15 +26,8 @@ public:
 private slots:
     void on_pushButton_clicked(bool checked);
 
-    void on_pushButton_2_clicked(bool checked);
-
 private:
     Ui::MainWindow* ui;
     UT70X ut;
-    int timerId = 0;
-
-    // QObject interface
-protected:
-    void timerEvent(QTimerEvent* event) override;
 };
 #endif // MAINWINDOW_H

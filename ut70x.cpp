@@ -8,47 +8,38 @@ UT70X::UT70X(QObject* parent)
 {
 }
 
-int UT70X::eeprom()
-{
-    int i;
-    QByteArray buf(4, '\0');
-    int len;
+//int UT70X::eeprom()
+//{
+//    int i;
+//    QByteArray buf(4, '\0');
+//    int len;
 
-    for (i = 0; i < 1; i++) {
-        buf[0] = 0xd0;
+//    for (i = 0; i < 1; i++) {
+//        buf[0] = 0xd0;
 
-        buf[1] = ((i / 16) & 0x0f) | 0x40;
-        buf[2] = (i & 0x0f) | 0x40;
-        buf[3] = 0x0a;
+//        buf[1] = ((i / 16) & 0x0f) | 0x40;
+//        buf[2] = (i & 0x0f) | 0x40;
+//        buf[3] = 0x0a;
 
-        //debug
-        buf[1] = 0x40;
-        buf[2] = 0x40;
-        write(buf, 4);
-        thread()->msleep(100);
-        buf.resize(15);
-        if ((len = read(buf.data(), 15)) > 0)
-            dumpdata(reinterpret_cast<unsigned char*>(buf.data()), len);
-        else
-            qCritical("No response\n");
-        thread()->msleep(100);
-    }
-    return 0;
-}
-
-void UT70X::bits(int b)
-{
-    int i;
-    for (i = 0; i < 8; i++) {
-        putchar(b & 0x80 ? '1' : '0');
-        b *= 2;
-    }
-}
+//        //debug
+//        buf[1] = 0x40;
+//        buf[2] = 0x40;
+//        write(buf, 4);
+//        thread()->msleep(100);
+//        buf.resize(15);
+//        if ((len = read(buf.data(), 15)) > 0)
+//            dumpdata(reinterpret_cast<unsigned char*>(buf.data()), len);
+//        else
+//            qCritical("No response\n");
+//        thread()->msleep(100);
+//    }
+//    return 0;
+//}
 
 int UT70X::dumpdata(unsigned char* d, int len)
 {
-    int i, ret = 0;
-    unsigned char xor_;
+    int /*i,*/ ret = 0;
+    //    unsigned char xor_;
 
     qDebug("dump: %d\n", len);
     if (len == 1)
@@ -156,7 +147,7 @@ void UT70X::parserawdata(unsigned char* d, int len)
             qCritical("DEBUG: Wrong  paket len=%d 12 wanted\n", len);
             return;
         }
-        printxvalue(d, len, 0);
+        parseValue();
         break;
         //read only settings
     case (149):
@@ -171,19 +162,23 @@ void UT70X::parserawdata(unsigned char* d, int len)
 
 void UT70X::printsvalue(unsigned char* d, int len)
 {
-
     //byte2
     if (!(d[2] & 0x80)) {
         qCritical("DEBUG: bit 7 in byte[2] not 1: ");
         dumpdata(d, len);
     }
-    qDebug("%s ", d[2] & 0x40 ? "Manual" : "AUTO");
-    qDebug("range:%d Unit:%d ", (d[2] / 8) & 7, d[2] & 7);
-    sub_range = (d[2] / 8) & 7;
+    const auto manualNAuto_ = d[2] & 0x40;
+    const auto range_ = (d[2] / 8) & 7;
+    const auto unit_ = d[2] & 7;
+
+    qDebug("%s ", manualNAuto_ ? "Manual" : "AUTO");
+    qDebug("range:%d Unit:%d ", range_, unit_);
+
+    sub_range = (d[2] >> 3) & 0x07;
     if ((d[2] & 7) == 4)
-        base_range = Hz_range;
+        base_range = range(Hz_range_);
     if ((d[2] & 7) == 5)
-        base_range = PR_range;
+        base_range = range(PR_range_);
 
     //byte 3  bits 5,0,1 unknmown, always 0 ?
     if ((d[3] & 0x23)) {
@@ -194,21 +189,13 @@ void UT70X::printsvalue(unsigned char* d, int len)
         qCritical("DEBUG: bit 7 in byte[3] not 1: ");
         dumpdata(d, len);
     }
-    qDebug("%s %s ", d[3] & 4 ? "BEEP" : "_", d[3] & 0x40 ? "REC" : "_");
-    switch (d[3] & 0x18) {
-    case 0:
-        qDebug("_");
-        break;
-    case (0x08):
-        qDebug("MAX");
-        break;
-    case (0x10):
-        qDebug("MIN");
-        break;
-    case (0x18):
-        qDebug("AVG");
-        break;
-    }
+    m_beep = d[3] & 0x04;
+    m_rec = d[3] & 0x40;
+    qDebug("%s %s ",
+        m_beep ? "BEEP" : "_",
+        m_rec ? "REC" : "_");
+    qDebug() << MeasType(d[3] & 0x18);
+
     //byte 4
     if ((d[4] & 0x42)) {
         qCritical("DEBUG: bits (1,5,6) not zero in byte[4]: ");
@@ -218,109 +205,103 @@ void UT70X::printsvalue(unsigned char* d, int len)
         qCritical("DEBUG: bit 7 in byte[4] not 1: ");
         dumpdata(d, len);
     }
-    qDebug(" %s %s %s %s %s", d[4] & 0x20 ? "LOWBAT" : "_",
-        d[4] & 4 ? "Hz" : "_", d[4] & 1 ? "HOLD" : "SAMPLE",
-        d[4] & 8 ? "OVERFLOW" : "_", d[4] & 0x10 ? "-" : "+");
+    m_freq = d[4] & 0x04;
+    m_hold = d[4] & 0x01;
+    m_lowbat = d[4] & 0x20;
+    m_nSign = d[4] & 0x10;
+    m_overflow = d[4] & 0x08;
+    qDebug() << int(d[4]);
+    qDebug(" %s %s %s %s %s",
+        m_freq ? "Hz" : "_",
+        m_hold ? "HOLD" : "SAMPLE",
+        m_lowbat ? "LOWBAT" : "_",
+        m_nSign ? "-" : "+",
+        m_overflow ? "OVERFLOW" : "_");
 }
 
-void UT70X::printxvalue(unsigned char* d, int len, int dot)
+void UT70X::parseValue()
 {
-
-    int i;
-    int r;
-    //  qDebug("<%d %d > ",base_range,sub_range);
-    //     if(sub_range==6 && d[1]==0xE0)
-    //      sub_range+=2;
-
-    //  qDebug("<%d %d> ",base_range[sub_range],sub_range);
-    d += 5;
-    r = base_range[sub_range] + 1;
-    for (i = 0; i < 5; i++, d++) {
-        if (*d == 0x3f) {
-            putchar(' ');
+    int range = base_range[sub_range];
+    auto d = paket()->data;
+    QString str;
+    str.reserve(10);
+    for (int i = 6; --i; ++d) {
+        switch (*d) {
+        case 0X3F:
+            str.append(' ');
             continue;
-        }
-        if (*d == 0x3e) {
-            putchar('L');
+        case 0X3E:
+            str.append('L');
             continue;
-        }
-        if (*d >= 0x30 && *d < 0x3a) {
-            if (r == 1)
-                qDebug(".");
-            r--;
-            putchar(*d);
+        case 0x30:
+        case 0X31:
+        case 0X32:
+        case 0X33:
+        case 0X34:
+        case 0X35:
+        case 0X36:
+        case 0X37:
+        case 0X38:
+        case 0X39:
+            if (!range--)
+                str.append('.');
+            str.append(*d);
             continue;
+        default:
+            qCritical("DEBUG, unknown character in ascci adc value %02X: ", *d);
+            dumpdata(data(), this->m_data.length());
         }
-        {
-            qCritical("DEBUG, unknown character in ascci adc value %02X: ",
-                *d);
-            dumpdata(d, len);
-        }
+        //        if (*d == 0X3F) {
+        //            str.append(' ');
+        //            continue;
+        //        } else if (*d == 0X3E) {
+        //            str.append('L');
+        //            continue;
+        //        } else if (*d >= 0x30 && *d <= 0X39) {
+        //            if (range-- == 1)
+        //                str.append('.');
+        //            str.append(*d);
+        //            continue;
+        //        }
+        //        qCritical("DEBUG, unknown character in ascci adc value %02X: ", *d);
+        //        dumpdata(data(), this->m_data.length());
+    }
+    bool fl;
+    if (auto value = str.trimmed().toDouble(&fl); fl) {
+        m_value = m_nSign ? -value : +value;
+        emit valueChanged(m_value);
+    } else {
+        qDebug() << "Err" << str;
     }
 }
 
 void UT70X::printmode(unsigned char* buf, int len)
 {
-
-    switch (buf[1]) { //measurment mode
-    case (0xF8):
-        qDebug("AC V ");
-        base_range = F8_range;
-        break;
-    case (0xF0):
-        qDebug("DC V ");
-        base_range = F0_range;
-        break;
-    case (0xE8):
-        qDebug("DC mV ");
-        base_range = E8_range;
-        break;
-    case (0xE0):
-        qDebug("R ");
-        base_range = E0_range; //800
-        break;
-    case (0xE1):
-        qDebug("C ");
-        base_range = E1_range; //8
-        break;
-    case (0xD8):
-        qDebug("D ");
-        base_range = D8_range; //8
-        break;
-    case (0xA8):
-        qDebug("DC A ");
-        base_range = A8_range; //8
-        break;
-    case (0xA9):
-        qDebug("AC A ");
-        base_range = A9_range; //8
-        break;
-    case (0xB0):
-        qDebug("AC mA ");
-        base_range = B0_range; //80
-        break;
-    case (0xB1):
-        qDebug("DC mA ");
-        base_range = B1_range; //80
-        break;
-    default:
+    base_range = range(Mode(buf[1]));
+    if (!base_range) {
         qDebug("?");
-        base_range = FAIL_range;
+        base_range = parMap.at(FAIL_range_).data;
         qCritical("DEBUG, unknown mode %02X: ", buf[1]);
         dumpdata(buf, len);
+    } else {
+        qDebug() << parMap.at(Mode(buf[1])).description;
     }
 }
 
 bool UT70X::initserial(const QString& name)
 {
+    stop();
     close();
+
     setPortName(name);
+
     if (open(ReadWrite)) {
         setBaudRate(Baud9600);
         setDataBits(Data8);
         setFlowControl(NoFlowControl);
         setDataTerminalReady(true);
         setRequestToSend(false);
+        startMs(500);
         return true;
     }
     qDebug() << __FUNCTION__ << errorString();
@@ -378,12 +359,12 @@ int UT70X::mmm()
     unsigned char cmd = 137;
     write(reinterpret_cast<char*>(&cmd), 1);
     waitForReadyRead(100);
-    data = readAll();
-    //    qDebug() << data.toHex('|').toUpper();
-    //    qDebug() << "mode\t" << mode();
+    m_data = readAll();
+    qDebug() << m_data.toHex('|').toUpper();
+    //   qDebug() << "mode\t" << mode();
     //    qDebug() << "range\t" << range(mode());
-    dumpdata(reinterpret_cast<unsigned char*>(data.data()), data.size());
-    parserawdata(reinterpret_cast<unsigned char*>(data.data()), data.size());
+    dumpdata(reinterpret_cast<unsigned char*>(m_data.data()), m_data.size());
+    parserawdata(reinterpret_cast<unsigned char*>(m_data.data()), m_data.size());
 
     return {};
 }
@@ -394,4 +375,11 @@ void UT70X::restoreserial()
     //        exit(3);
     //    if (close(fd) != 0)
     //        exit(2);
+}
+
+void UT70X::timerEvent(QTimerEvent* event)
+{
+    if (event->timerId() == m_timerId) {
+        mmm();
+    }
 }
