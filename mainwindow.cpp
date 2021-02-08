@@ -39,5 +39,5 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_pushButton_clicked(bool /*checked*/)
 {
-    ut.initserial(ui->comboBox->currentText());
+    ut.initSerial(ui->comboBox->currentText());
 }
